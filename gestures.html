@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hand Nebula - Gestures</title>
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
+        button { padding: 20px 50px; font-size: 20px; cursor: pointer; background: #ff0055; border: none; border-radius: 50px; font-weight: bold; color: white; }
+        #ui { position: absolute; top: 20px; left: 20px; z-index: 10; pointer-events: none; }
+        #preview { position: absolute; bottom: 20px; right: 20px; width: 200px; height: 150px; border: 2px solid #ff0055; border-radius: 10px; overflow: hidden; }
+        canvas#output_canvas { width: 100%; height: 100%; transform: scaleX(-1); }
+        video { display: none; }
+        .stat { color: #ff0055; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        <h1>Hand Nebula: Actions</h1>
+        <button id="start-btn">LAUNCH GESTURES</button>
+    </div>
+    <div id="ui">
+        <h2>Action: <span id="g-name" class="stat">Detecting...</span></h2>
+        <p>✊ FIST | ✌️ PEACE | 🤘 SPIDEY</p>
+    </div>
+    <div id="preview"><canvas id="output_canvas"></canvas></div>
+    <video id="input_video" playsinline></video>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+    <script>
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const PARTICLE_COUNT = 10000;
+        let isFist = false, isSpidey = false;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        camera.position.z = 60;
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geo = new THREE.BufferGeometry();
+        const pos = new Float32Array(PARTICLE_COUNT * 3);
+        const orig = new Float32Array(PARTICLE_COUNT * 3);
+        for(let i=0; i<PARTICLE_COUNT; i++) {
+            const x=(Math.random()-0.5)*100, y=(Math.random()-0.5)*100, z=(Math.random()-0.5)*100;
+            pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z; orig[i*3]=x; orig[i*3+1]=y; orig[i*3+2]=z;
+        }
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        const mat = new THREE.PointsMaterial({color: 0xff0055, size: 0.2, transparent: true, blending: THREE.AdditiveBlending});
+        const points = new THREE.Points(geo, mat);
+        scene.add(points);
+
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6});
+        hands.onResults((res) => {
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(res.image, 0, 0, canvasElement.width, canvasElement.height);
+            if (res.multiHandLandmarks && res.multiHandLandmarks[0]) {
+                const lm = res.multiHandLandmarks[0];
+                drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, {color: '#ff0055'});
+                const up = [lm[8].y < lm[6].y, lm[12].y < lm[10].y, lm[16].y < lm[14].y, lm[20].y < lm[18].y];
+                isFist = !up[0] && !up[1] && !up[2] && !up[3];
+                isSpidey = up[0] && up[3] && !up[1];
+                const isPeace = up[0] && up[1] && !up[2];
+                
+                const s = document.getElementById('g-name');
+                if (isFist) { s.innerText="FIST"; mat.color.setHex(0xff0000); }
+                else if (isPeace) { s.innerText="PEACE"; mat.color.setHSL((Date.now()*0.001)%1, 1, 0.5); }
+                else if (isSpidey) { s.innerText="SPIDEY"; mat.color.setHex(0xffffff); }
+                else { s.innerText="OPEN"; mat.color.setHex(0xff0055); }
+            }
+        });
+
+        const cam = new Camera(videoElement, {onFrame: async () => { await hands.send({image: videoElement}); }, width: 640, height: 480});
+        document.getElementById('start-btn').addEventListener('click', () => { document.getElementById('overlay').style.display='none'; cam.start(); });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const p = geo.attributes.position.array;
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const i3 = i*3;
+                let tx = isFist ? 0 : orig[i3], ty = isFist ? 0 : orig[i3+1], tz = isFist ? 0 : orig[i3+2];
+                p[i3] += (tx - p[i3]) * 0.05; p[i3+1] += (ty - p[i3+1]) * 0.05; p[i3+2] += (tz - p[i3+2]) * 0.05;
+            }
+            geo.attributes.position.needsUpdate = true;
+            points.rotation.y += isSpidey ? 0.05 : 0.002; renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
