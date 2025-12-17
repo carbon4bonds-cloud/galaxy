@@ -3,27 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hand Nebula - Shapes</title>
+    <title>Hand Nebula - Final Merged</title>
     <style>
-        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
-        button { padding: 20px 50px; font-size: 20px; cursor: pointer; background: #00f2ff; border: none; border-radius: 50px; font-weight: bold; }
+        body { margin: 0; background: #000; color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; transition: 0.5s; }
+        button { padding: 20px 50px; font-size: 20px; cursor: pointer; background: #00f2ff; border: none; border-radius: 50px; font-weight: bold; box-shadow: 0 0 20px #00f2ff; }
         #ui { position: absolute; top: 20px; left: 20px; z-index: 10; pointer-events: none; }
-        #preview { position: absolute; bottom: 20px; right: 20px; width: 200px; height: 150px; border: 2px solid #00f2ff; border-radius: 10px; overflow: hidden; }
+        #preview { position: absolute; bottom: 20px; right: 20px; width: 220px; height: 160px; border: 2px solid #00f2ff; border-radius: 12px; overflow: hidden; background: #111; }
         canvas#output_canvas { width: 100%; height: 100%; transform: scaleX(-1); }
         video { display: none; }
-        .stat { color: #00f2ff; font-weight: bold; }
+        .stat { color: #00f2ff; font-weight: bold; font-size: 1.2rem; text-transform: uppercase; }
+        .hint { font-size: 0.8rem; opacity: 0.7; margin-top: 5px; }
     </style>
 </head>
 <body>
+
     <div id="overlay">
-        <h1>Hand Nebula: Shapes</h1>
-        <button id="start-btn">START EXPERIENCE</button>
+        <h1>Hand Nebula: Ultimate</h1>
+        <p>Position: Change Shapes | Gestures: Change Behavior</p>
+        <button id="start-btn">INITIALIZE SYSTEM</button>
     </div>
+
     <div id="ui">
-        <h2>Shape: <span id="shape-name" class="stat">HEART</span></h2>
-        <p>Pinch fingers to attract particles</p>
+        <div>Shape: <span id="shape-name" class="stat">HEART</span></div>
+        <div>Gesture: <span id="g-name" class="stat">NONE</span></div>
+        <div class="hint">✊ Fist: Collapse | ✌️ Peace: Rainbow | 🤘 Spidey: Spin</div>
     </div>
+
     <div id="preview"><canvas id="output_canvas"></canvas></div>
     <video id="input_video" playsinline></video>
 
@@ -37,19 +43,29 @@
         const canvasElement = document.getElementById('output_canvas');
         const canvasCtx = canvasElement.getContext('2d');
         const PARTICLE_COUNT = 15000;
-        let currentShape = 'HEART', handX = 0, handY = 0, isPinching = false;
+        
+        let currentShape = 'HEART';
+        let handX = 0, handY = 0;
+        let isPinching = false, isFist = false, isPeace = false, isSpidey = false;
 
+        // --- SHAPE GENERATORS ---
         const getTarget = (i, shape) => {
             const t = (i / PARTICLE_COUNT) * Math.PI * 2 + Math.random();
             if (shape === 'HEART') {
-                return { x: 16 * Math.pow(Math.sin(t), 3) * 0.8, y: (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * 0.8, z: (Math.random()-0.5)*5 };
+                const x = 16 * Math.pow(Math.sin(t), 3) * 0.8;
+                const y = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * 0.8;
+                return { x, y, z: (Math.random()-0.5)*5 };
             } else if (shape === 'SATURN') {
-                if (i % 4 === 0) return { x: 8*Math.cos(t*10)*Math.sin(t*5), y: 8*Math.sin(t*10)*Math.sin(t*5), z: 8*Math.cos(t*5) };
-                const r = 15 + Math.random()*5; return { x: Math.cos(t*10)*r, y: (Math.random()-0.5)*2, z: Math.sin(t*10)*r };
+                if (i % 5 === 0) return { x: 8*Math.cos(t*10)*Math.sin(t*5), y: 8*Math.sin(t*10)*Math.sin(t*5), z: 8*Math.cos(t*5) };
+                const r = 16 + Math.random()*6;
+                return { x: Math.cos(t*10)*r, y: (Math.random()-0.5)*2, z: Math.sin(t*10)*r };
+            } else { // FLOWER
+                const r = 18 * Math.cos(5 * t);
+                return { x: r * Math.cos(t), y: r * Math.sin(t), z: (Math.random()-0.5)*3 };
             }
-            return { x: 18*Math.cos(5*t)*Math.cos(t), y: 18*Math.cos(5*t)*Math.sin(t), z: 0 };
         };
 
+        // --- THREE.JS INITIALIZATION ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         camera.position.z = 50;
@@ -60,53 +76,103 @@
         const geo = new THREE.BufferGeometry();
         const pos = new Float32Array(PARTICLE_COUNT * 3);
         const targetPos = new Float32Array(PARTICLE_COUNT * 3);
+        const origPos = new Float32Array(PARTICLE_COUNT * 3);
+        
         for(let i=0; i<PARTICLE_COUNT; i++) {
             const pt = getTarget(i, 'HEART');
-            pos[i*3] = (Math.random()-0.5)*100; pos[i*3+1] = (Math.random()-0.5)*100; pos[i*3+2] = (Math.random()-0.5)*100;
+            pos[i*3] = (Math.random()-0.5)*150; pos[i*3+1] = (Math.random()-0.5)*150; pos[i*3+2] = (Math.random()-0.5)*150;
             targetPos[i*3] = pt.x; targetPos[i*3+1] = pt.y; targetPos[i*3+2] = pt.z;
         }
+
         geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-        const mat = new THREE.PointsMaterial({color: 0x00f2ff, size: 0.15, transparent: true, blending: THREE.AdditiveBlending});
+        const mat = new THREE.PointsMaterial({color: 0x00f2ff, size: 0.18, transparent: true, blending: THREE.AdditiveBlending});
         const points = new THREE.Points(geo, mat);
         scene.add(points);
 
+        // --- MEDIAPIPE LOGIC ---
         const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-        hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6});
+        hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5});
+
         hands.onResults((res) => {
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.drawImage(res.image, 0, 0, canvasElement.width, canvasElement.height);
+            
             if (res.multiHandLandmarks && res.multiHandLandmarks[0]) {
                 const lm = res.multiHandLandmarks[0];
-                drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, {color: '#00f2ff'});
-                handX = (lm[9].x - 0.5) * -80; handY = (0.5 - lm[9].y) * 60;
-                isPinching = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) < 0.08;
-                if (lm[9].y < 0.3) update('SATURN', 0xffaa00);
-                else if (lm[9].y > 0.7) update('FLOWER', 0xff00cc);
-                else if (lm[9].x < 0.3) update('HEART', 0x00f2ff);
+                drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, {color: '#00f2ff', lineWidth: 2});
+                
+                handX = (lm[9].x - 0.5) * -80;
+                handY = (0.5 - lm[9].y) * 60;
+
+                // 1. Gesture Detection (High Sensitivity)
+                const fingers = [lm[8].y < lm[6].y, lm[12].y < lm[10].y, lm[16].y < lm[14].y, lm[20].y < lm[18].y];
+                isFist = fingers.every(f => !f);
+                isPeace = fingers[0] && fingers[1] && !fingers[2] && !fingers[3];
+                isSpidey = fingers[0] && fingers[3] && !fingers[1] && !fingers[2];
+                isPinching = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) < 0.07;
+
+                const gLabel = document.getElementById('g-name');
+                if (isFist) gLabel.innerText = "FIST";
+                else if (isPeace) gLabel.innerText = "PEACE";
+                else if (isSpidey) gLabel.innerText = "SPIDEY";
+                else gLabel.innerText = "NONE";
+
+                // 2. Shape Switching via Position
+                if (lm[9].y < 0.25) updateShape('SATURN', 0xffaa00);
+                else if (lm[9].y > 0.75) updateShape('FLOWER', 0xff00cc);
+                else if (lm[9].x < 0.25) updateShape('HEART', 0x00f2ff);
             }
         });
 
-        function update(n, c) {
-            if (currentShape === n) return; currentShape = n;
-            document.getElementById('shape-name').innerText = n; mat.color.set(c);
-            for(let i=0; i<PARTICLE_COUNT; i++) { const pt = getTarget(i, n); targetPos[i*3]=pt.x; targetPos[i*3+1]=pt.y; targetPos[i*3+2]=pt.z; }
+        function updateShape(name, color) {
+            if (currentShape !== name) {
+                currentShape = name;
+                document.getElementById('shape-name').innerText = name;
+                mat.color.set(color);
+                for(let i=0; i<PARTICLE_COUNT; i++) {
+                    const pt = getTarget(i, name);
+                    targetPos[i*3] = pt.x; targetPos[i*3+1] = pt.y; targetPos[i*3+2] = pt.z;
+                }
+            }
         }
 
         const cam = new Camera(videoElement, {onFrame: async () => { await hands.send({image: videoElement}); }, width: 640, height: 480});
-        document.getElementById('start-btn').addEventListener('click', () => { document.getElementById('overlay').style.display='none'; cam.start(); });
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('overlay').style.opacity = '0';
+            setTimeout(() => document.getElementById('overlay').style.display = 'none', 500);
+            cam.start();
+        });
 
         function animate() {
             requestAnimationFrame(animate);
             const p = geo.attributes.position.array;
+            
+            // Effect logic
+            if (isPeace) mat.color.setHSL((Date.now() * 0.001) % 1, 1, 0.5);
+
             for (let i = 0; i < PARTICLE_COUNT; i++) {
-                const i3 = i*3;
-                let tx = isPinching ? handX : targetPos[i3], ty = isPinching ? handY : targetPos[i3+1], tz = isPinching ? 0 : targetPos[i3+2];
-                p[i3] += (tx - p[i3]) * 0.07; p[i3+1] += (ty - p[i3+1]) * 0.07; p[i3+2] += (tz - p[i3+2]) * 0.07;
+                const i3 = i * 3;
+                let tx = targetPos[i3], ty = targetPos[i3+1], tz = targetPos[i3+2];
+
+                if (isFist || isPinching) { tx = handX; ty = handY; tz = 0; }
+                if (isSpidey) { tx *= 1.5; ty *= 1.5; tz *= 1.5; }
+
+                p[i3] += (tx - p[i3]) * 0.08;
+                p[i3+1] += (ty - p[i3+1]) * 0.08;
+                p[i3+2] += (tz - p[i3+2]) * 0.08;
             }
+
             geo.attributes.position.needsUpdate = true;
-            points.rotation.y += 0.002; renderer.render(scene, camera);
+            points.rotation.y += isSpidey ? 0.04 : 0.003;
+            renderer.render(scene, camera);
         }
         animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
